@@ -1,0 +1,153 @@
+name: build
+
+# 参考
+# https://masa-mitsu.github.io/blog/posts/20220516_01/
+# https://qiita.com/estima5633/items/0fe1013734bd727ca11a
+
+
+on:
+  workflow_dispatch:
+
+
+jobs:
+  build:
+    name: Build
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        config:
+        - { cc: gcc, make: make, opt: "-Wno-unknown-pragmas -Wno-sign-compare -Wno-unused-variable" }
+        - { cc: cl, make: nmake, opt: "" }
+        
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: win32
+
+    - uses: msys2/setup-msys2@v2
+      with: 
+        msystem: MINGW32
+        path-type: inherit
+        update: true
+        install: >-
+          base-devel
+          mingw-w64-i686-toolchain
+          make
+          git
+          wget
+          autoconf
+          automake
+    
+    - uses: shogo82148/actions-setup-perl@v1
+      if: ${{ matrix.config.cc == 'cl' }}
+      with:
+        perl-version: '5.32'
+        distribution: strawberry
+
+    - name: Check Path
+      shell: msys2 {0}
+      run: |
+        cd $(cygpath -u "${{ github.workspace }}")
+        ls
+
+    - name: Get SourceCodes
+      shell: msys2 {0}
+      run: |
+        cd $(cygpath -u "${{ github.workspace }}")
+
+        # nginx
+        git clone https://github.com/nginx/nginx.git --depth 1 -b release-1.24.0
+
+        # zlib
+        git clone https://github.com/madler/zlib.git --depth 1 -b v1.2.13
+
+        # OpenSSL (v3.1.3)
+        git clone https://github.com/openssl/openssl.git --depth 1 -b openssl-3.1.3
+        # OpenSSL (v1.1.1w)
+        # git clone https://github.com/openssl/openssl.git --depth 1 -b OpenSSL_1_1_1w
+
+        # PCRE
+        # SorceForgeは末尾にdownloadをつけなくても勝手にリダイレクトされるし、こっちじゃないとファイル名が...
+        wget https://sourceforge.net/projects/pcre/files/pcre/8.45/pcre-8.45.tar.bz2
+        tar -jxvf pcre-8.45.tar.bz2
+        mv pcre-8.45 pcre
+        # PCRE2
+        # git clone https://github.com/PCRE2Project/pcre2.git --depth 1 -b pcre2-10.42
+
+        # nginx-rtmp-module
+        git clone https://github.com/arut/nginx-rtmp-module.git --depth 1 -b v1.2.2
+
+    - name: Attach patch
+      shell: msys2 {0}
+      run: |
+        cd $(cygpath -u "${{ github.workspace }}")
+        mv diff.patch nginx-rtmp-module
+        cd nginx-rtmp-module
+        patch < diff.patch
+
+
+    - name: Configure
+      shell: msys2 {0}
+      run: |
+        cd $(cygpath -u "${{ github.workspace }}")
+        cd nginx
+
+        # configure
+        auto/configure \
+            --with-cc=${{ matrix.config.cc }} \
+            --builddir=objs \
+            --with-debug \
+            --prefix= \
+            --conf-path=conf/nginx.conf \
+            --pid-path=logs/nginx.pid \
+            --http-log-path=logs/access.log \
+            --error-log-path=logs/error.log \
+            --sbin-path=nginx.exe \
+            --http-client-body-temp-path=temp/client_body_temp \
+            --http-proxy-temp-path=temp/proxy_temp \
+            --http-fastcgi-temp-path=temp/fastcgi_temp \
+            --http-scgi-temp-path=temp/scgi_temp \
+            --http-uwsgi-temp-path=temp/uwsgi_temp \
+            --with-cc-opt="-DFD_SETSIZE=1024 ${{ matrix.config.opt }}" \
+            --with-http_v2_module \
+            --with-http_realip_module \
+            --with-http_addition_module \
+            --with-http_sub_module \
+            --with-http_dav_module \
+            --with-http_stub_status_module \
+            --with-http_ssl_module \
+            --with-pcre=../pcre \
+            --with-zlib=../zlib \
+            --with-openssl=../openssl \
+            --with-openssl-opt=no-asm \
+            --add-module=../nginx-rtmp-module
+
+    - name: Build (gcc)
+      if: ${{ matrix.config.cc == 'gcc' }}
+      shell: msys2 {0}
+      run: |
+        cd $(cygpath -u "${{ github.workspace }}")
+        cd nginx
+        make -f objs/Makefile -j$(nproc)
+
+
+    - name: Build (cl)
+      if: ${{ matrix.config.cc == 'cl' }}
+      run: |
+        cd ${{ github.workspace }}
+        cd nginx
+        nmake -f objs/Makefile
+
+    - name: Check Files
+      shell: msys2 {0}
+      run: |
+        cd $(cygpath -u "${{ github.workspace }}")
+        cd nginx/objs
+        ls
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: nginx-${{ matrix.config.cc }}
+        path: nginx/objs/nginx.exe

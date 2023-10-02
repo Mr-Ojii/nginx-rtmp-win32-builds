@@ -20,7 +20,7 @@ jobs:
         - { cc: cl, make: nmake, opt: "" }
         
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - uses: ilammy/msvc-dev-cmd@v1
       with:

@@ -65,8 +65,6 @@ jobs:
 
         # OpenSSL (v3.1.4)
         git clone https://github.com/openssl/openssl.git --depth 1 -b openssl-3.1.4
-        # OpenSSL (v1.1.1w)
-        # git clone https://github.com/openssl/openssl.git --depth 1 -b OpenSSL_1_1_1w
 
         # PCRE
         # SorceForgeは末尾にdownloadをつけなくても勝手にリダイレクトされるし、こっちじゃないとファイル名が...

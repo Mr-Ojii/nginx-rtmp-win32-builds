@@ -63,7 +63,7 @@ jobs:
         # zlib
         git clone https://github.com/madler/zlib.git --depth 1 -b v1.3
 
-        # OpenSSL (v3.1.4)
+        # OpenSSL
         git clone https://github.com/openssl/openssl.git --depth 1 -b openssl-3.1.4
 
         # PCRE
